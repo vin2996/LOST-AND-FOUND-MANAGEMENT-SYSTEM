@@ -3,6 +3,7 @@ import os, sqlite3
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from functools import wraps
+
 try:
     import psycopg
     from psycopg.rows import dict_row
@@ -30,7 +31,6 @@ os.makedirs('templates', exist_ok=True)
 ALLOWED_EXT = {'png','jpg','jpeg','gif'}
 
 def get_db():
-    # Force Postgres on Render
     db_url = os.environ.get('DATABASE_URL')
     if HAS_POSTGRES and db_url:
         if not hasattr(g, '_database') or g._database is None:
@@ -45,7 +45,6 @@ def get_db():
         return g._database
     else:
         g.db_is_pg = False
-        # Use absolute path for Render
         base_dir = os.path.dirname(os.path.abspath(__file__))
         db_path = os.path.join(base_dir, 'database.db')
         conn = sqlite3.connect(db_path)
@@ -89,10 +88,14 @@ def init_db():
         db.commit()
     else:
         db.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE, password TEXT, role TEXT, name TEXT, is_approved INTEGER DEFAULT 1, username TEXT UNIQUE)''')
-        try: db.execute("ALTER TABLE users ADD COLUMN is_approved INTEGER DEFAULT 1")
-        except: pass
-        try: db.execute("ALTER TABLE users ADD COLUMN username TEXT")
-        except: pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN is_approved INTEGER DEFAULT 1")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN username TEXT")
+        except:
+            pass
         db.execute('''CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, category TEXT, description TEXT, location TEXT, status TEXT, image TEXT, reported_by TEXT, date_reported TEXT, date_returned TEXT, time_returned TEXT, claimed_by TEXT)''')
         if db.execute("SELECT COUNT(*) FROM users").fetchone()[0]==0:
             db.execute("INSERT INTO users (email,password,role,name,is_approved,username) VALUES (?,?,?,?,?,?)", ('admin@zdspgc.edu.ph','admin123','admin','Admin',1,'admin'))
@@ -104,8 +107,6 @@ def init_db():
             db.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (?,?,?,?,?,?,?,?)", ('Black Backpack Jansport','Bag','Returned to owner','Admin Office','Returned','backpack.jpg','admin@zdspgc.edu.ph',now))
         db.commit()
         db.close()
-
-# --- YOUR ROUTES - SAME AS BEFORE ---
 
 def login_required(f):
     @wraps(f)
@@ -119,7 +120,8 @@ def admin_required(f):
     @wraps(f)
     def dec(*a,**kw):
         if session.get('role')!='admin':
-            flash('Admin only!'); return redirect('/')
+            flash('Admin only!')
+            return redirect('/')
         return f(*a,**kw)
     return dec
 
@@ -134,7 +136,7 @@ def login():
             user=cur.fetchone()
         else:
             user=db.execute("SELECT * FROM users WHERE (email=? OR username=?) AND password=?",(email,email,pw)).fetchone()
-            db.close()
+        db.close()
         if user:
             if user['is_approved']==0:
                 flash('Account pending approval by admin. Please wait for staff approval.')
@@ -168,16 +170,18 @@ def register():
             else:
                 db.execute("INSERT INTO users (username,email,password,role,name,is_approved) VALUES (?,?,?,?,?,?)", (username,email,pw,role,name,is_approved))
                 db.commit()
-                db.close()
+            db.close()
             if role=='student':
                 flash('Registration successful! Student auto-approved, you can now login.')
             else:
                 flash('Registration successful! Staff account pending admin approval.')
             return redirect('/login')
         except Exception as e:
-            if not is_pg(): db.close()
+            if not is_pg():
+                db.close()
             print(e)
             flash('Username or email already exists!')
+            return render_template('register.html')
     return render_template('register.html')
 
 @app.route('/logout')
@@ -201,7 +205,7 @@ def dashboard():
         matched=db.execute("SELECT COUNT(*) FROM items WHERE status='Matched'").fetchone()[0]
         returned=db.execute("SELECT COUNT(*) FROM items WHERE status='Returned'").fetchone()[0]
         items=db.execute("SELECT * FROM items ORDER BY id DESC LIMIT 8").fetchall()
-        db.close()
+    db.close()
     return render_template('dashboard.html', lost=lost, found=found, matched=matched, returned=returned, items=items)
 
 @app.route('/items')
@@ -219,18 +223,24 @@ def items_page():
             else:
                 cur.execute("SELECT * FROM items WHERE status=%s AND (name ILIKE %s OR category ILIKE %s OR location ILIKE %s OR description ILIKE %s OR reported_by ILIKE %s) ORDER BY id DESC",(status,like,like,like,like,like))
         else:
-            if status=='All': cur.execute("SELECT * FROM items ORDER BY id DESC")
-            else: cur.execute("SELECT * FROM items WHERE status=%s ORDER BY id DESC",(status,))
+            if status=='All':
+                cur.execute("SELECT * FROM items ORDER BY id DESC")
+            else:
+                cur.execute("SELECT * FROM items WHERE status=%s ORDER BY id DESC",(status,))
         items=cur.fetchall()
     else:
         if q:
             like=f"%{q}%"
-            if status=='All': items=db.execute("SELECT * FROM items WHERE name LIKE? OR category LIKE? OR location LIKE? OR description LIKE? OR reported_by LIKE? ORDER BY id DESC",(like,like,like,like,like)).fetchall()
-            else: items=db.execute("SELECT * FROM items WHERE status=? AND (name LIKE? OR category LIKE? OR location LIKE? OR description LIKE? OR reported_by LIKE?) ORDER BY id DESC",(status,like,like,like,like,like)).fetchall()
+            if status=='All':
+                items=db.execute("SELECT * FROM items WHERE name LIKE? OR category LIKE? OR location LIKE? OR description LIKE? OR reported_by LIKE? ORDER BY id DESC",(like,like,like,like,like)).fetchall()
+            else:
+                items=db.execute("SELECT * FROM items WHERE status=? AND (name LIKE? OR category LIKE? OR location LIKE? OR description LIKE? OR reported_by LIKE?) ORDER BY id DESC",(status,like,like,like,like,like)).fetchall()
         else:
-            if status=='All': items=db.execute("SELECT * FROM items ORDER BY id DESC").fetchall()
-            else: items=db.execute("SELECT * FROM items WHERE status=? ORDER BY id DESC",(status,)).fetchall()
-        db.close()
+            if status=='All':
+                items=db.execute("SELECT * FROM items ORDER BY id DESC").fetchall()
+            else:
+                items=db.execute("SELECT * FROM items WHERE status=? ORDER BY id DESC",(status,)).fetchall()
+    db.close()
     return render_template('items.html', items=items, filter=status, q=q)
 
 @app.route('/report', methods=['GET','POST'])
@@ -264,7 +274,8 @@ def edit_item(id):
     else:
         item=db.execute("SELECT * FROM items WHERE id=?",(id,)).fetchone()
     if session.get('role')!='admin' and item['reported_by']!=session.get('email'):
-        if not is_pg(): db.close()
+        if not is_pg():
+            db.close()
         flash('Only the person who reported it or the admin can edit')
         return redirect('/items')
     if request.method=='POST':
@@ -278,7 +289,8 @@ def edit_item(id):
             db.execute("UPDATE items SET name=?,category=?,description=?,location=?,status=?,image=? WHERE id=?", (request.form['name'],request.form['category'],request.form['description'],request.form['location'],request.form['status'],filename,id))
             db.commit(); db.close()
         return redirect('/items')
-    if not is_pg(): db.close()
+    if not is_pg():
+        db.close()
     return render_template('edit.html', item=item)
 
 @app.route('/delete/<int:id>')
@@ -339,7 +351,7 @@ def matches_page():
         matched = cur.fetchall()
     else:
         matched = db.execute("SELECT * FROM items WHERE status='Matched' ORDER BY id DESC").fetchall()
-        db.close()
+    db.close()
     return render_template('matches.html', matched=matched)
 
 @app.route('/claims')
@@ -363,7 +375,7 @@ def users_page():
     else:
         users=db.execute("SELECT * FROM users").fetchall()
         pending=db.execute("SELECT * FROM users WHERE is_approved=0").fetchall()
-        db.close()
+    db.close()
     return render_template('users.html', users=users, pending=pending)
 
 @app.route('/approve/<int:id>')
@@ -420,7 +432,8 @@ def profile_page():
         else:
             check=db.execute("SELECT * FROM users WHERE (username=? OR email=?) AND id!=?", (username, email, session['user_id'])).fetchone()
         if check:
-            if not is_pg(): db.close()
+            if not is_pg():
+                db.close()
             flash('Username or email already taken by another user!')
             return render_template('profile.html', user=user)
         if pw:
@@ -439,10 +452,20 @@ def profile_page():
             session['name']=name; session['email']=email
             flash('Profile updated successfully!')
             return redirect('/profile')
-    if not is_pg(): db.close()
+    if not is_pg():
+        db.close()
     return render_template('profile.html', user=user)
 
-# FIX: AUTO CREATE TABLES ON STARTUP - KAHIT NAKA GUNICORN
+# --- ADDED FOR RENDER POSTGRES FIX ---
+@app.route('/fixdb')
+def fixdb():
+    try:
+        init_db()
+        return "DB FIXED! Go to /login - admin@zdspgc.edu.ph / admin123"
+    except Exception as e:
+        return f"Error: {e}"
+
+# AUTO CREATE TABLES ON STARTUP
 with app.app_context():
     try:
         init_db()
