@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g
 import os, sqlite3
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from werkzeug.utils import secure_filename
 from functools import wraps
 try:
@@ -28,6 +28,12 @@ os.makedirs('static/js', exist_ok=True)
 os.makedirs('templates', exist_ok=True)
 
 ALLOWED_EXT = {'png','jpg','jpeg','gif'}
+
+# === PH TIME FIX - LAHAT NG TIME DITO NA ===
+PH_TZ = timezone(timedelta(hours=8))
+
+def get_ph_now():
+    return datetime.now(PH_TZ)
 
 def get_db():
     db_url = os.environ.get('DATABASE_URL')
@@ -79,7 +85,7 @@ def init_db():
         row = cur.fetchone()
         count = row['c'] if isinstance(row, dict) else row[0]
         if count==0:
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now = get_ph_now().strftime("%Y-%m-%d %H:%M:%S")
             cur.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", ('Brown Leather Wallet','Wallet','Found near library with cash inside','Library - 2nd Floor','Found','wallet.jpg','admin@zdspgc.edu.ph',now))
             cur.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", ('Student ID Card - Juan Dela Cruz','ID Card','ID with blue lanyard','Cafeteria','Matched','id.jpg','admin@zdspgc.edu.ph',now))
             cur.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", ('Set of Keys with Keychain','Keys','3 keys + black keychain','Parking Lot','Lost','keys.jpg','admin@zdspgc.edu.ph',now))
@@ -99,7 +105,7 @@ def init_db():
         if db.execute("SELECT COUNT(*) FROM users").fetchone()[0]==0:
             db.execute("INSERT INTO users (email,password,role,name,is_approved,username) VALUES (?,?,?,?,?,?)", ('admin@zdspgc.edu.ph','admin123','admin','Admin',1,'admin'))
         if db.execute("SELECT COUNT(*) FROM items").fetchone()[0]==0:
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now = get_ph_now().strftime("%Y-%m-%d %H:%M:%S")
             db.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (?,?,?,?,?,?,?,?)", ('Brown Leather Wallet','Wallet','Found near library with cash inside','Library - 2nd Floor','Found','wallet.jpg','admin@zdspgc.edu.ph',now))
             db.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (?,?,?,?,?,?,?,?)", ('Student ID Card - Juan Dela Cruz','ID Card','ID with blue lanyard','Cafeteria','Matched','id.jpg','admin@zdspgc.edu.ph',now))
             db.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (?,?,?,?,?,?,?,?)", ('Set of Keys with Keychain','Keys','3 keys + black keychain','Parking Lot','Lost','keys.jpg','admin@zdspgc.edu.ph',now))
@@ -252,7 +258,7 @@ def report():
         file=request.files.get('image'); filename='no-image.png'
         if file and file.filename!='':
             filename=secure_filename(file.filename); file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        now=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now=get_ph_now().strftime("%Y-%m-%d %H:%M:%S")
         db=get_db()
         if is_pg():
             cur=db.cursor()
@@ -272,7 +278,6 @@ def edit_item(id):
         cur=db.cursor(); cur.execute("SELECT * FROM items WHERE id=%s",(id,)); item=cur.fetchone()
     else:
         item=db.execute("SELECT * FROM items WHERE id=?",(id,)).fetchone()
-    # Updated permission: admin and staff can edit all, students can edit own only
     if session.get('role') not in ['admin','staff'] and item['reported_by']!=session.get('email'):
         if not is_pg():
             db.close()
@@ -310,9 +315,9 @@ def delete_item(id):
 def return_item(id):
     if session.get('role')!='admin':
         flash('Admin only can return!'); return redirect('/items')
-    from datetime import timezone, timedelta
-    ph_tz = timezone(timedelta(hours=8))
-    now=datetime.now(ph_tz); full=now.strftime("%Y-%m-%d %I:%M:%S %p"); t=now.strftime("%I:%M:%S %p")
+    now=get_ph_now()
+    full=now.strftime("%Y-%m-%d %I:%M:%S %p")
+    t=now.strftime("%I:%M:%S %p")
     db=get_db()
     if is_pg():
         cur=db.cursor(); cur.execute("UPDATE items SET status='Returned', date_returned=%s, time_returned=%s, claimed_by=%s WHERE id=%s", (full,t,session['email'],id)); db.commit()
@@ -460,7 +465,6 @@ def profile_page():
         db.close()
     return render_template('profile.html', user=user)
 
-# --- ADDED FOR RENDER POSTGRES FIX ---
 @app.route('/fixdb')
 def fixdb():
     try:
@@ -469,7 +473,6 @@ def fixdb():
     except Exception as e:
         return f"Error: {e}"
 
-# AUTO CREATE TABLES ON STARTUP
 with app.app_context():
     try:
         init_db()
@@ -477,5 +480,5 @@ with app.app_context():
     except Exception as e:
         print(f"DB Init Error: {e}")
 
-if __name__=='__main__':
-    app.run(debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
