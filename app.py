@@ -310,7 +310,9 @@ def delete_item(id):
 def return_item(id):
     if session.get('role')!='admin':
         flash('Admin only can return!'); return redirect('/items')
-    now=datetime.now(); full=now.strftime("%Y-%m-%d %I:%M:%S %p"); t=now.strftime("%I:%M:%S %p")
+    from datetime import timezone, timedelta
+    ph_tz = timezone(timedelta(hours=8))
+    now=datetime.now(ph_tz); full=now.strftime("%Y-%m-%d %I:%M:%S %p"); t=now.strftime("%I:%M:%S %p")
     db=get_db()
     if is_pg():
         cur=db.cursor(); cur.execute("UPDATE items SET status='Returned', date_returned=%s, time_returned=%s, claimed_by=%s WHERE id=%s", (full,t,session['email'],id)); db.commit()
