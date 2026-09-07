@@ -342,8 +342,10 @@ def details(id):
 
 @app.route('/matches')
 @login_required
-@admin_required
 def matches_page():
+    if session.get('role') not in ['admin','staff']:
+        flash('Staff or Admin only!')
+        return redirect('/')
     db = get_db()
     if is_pg():
         cur = db.cursor()
