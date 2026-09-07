@@ -1,6 +1,0 @@
-database.db
-__pycache__/
-*.pyc
-static/uploads/
-venv/
-.env
