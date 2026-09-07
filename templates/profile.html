@@ -1,0 +1,37 @@
+{% extends 'base.html' %}{% block content %}
+<h4 class="fw-bold mb-1" style="color:#0A3D1F">👤 My Admin Profile</h4>
+<small class="text-muted d-block mb-4">Change default admin username & password here - Important for security!</small>
+
+{% with m=get_flashed_messages() %}
+{% if m %}<div class="alert alert-success rounded-pill py-2">{{m[0]}}</div>{% endif %}
+{% endwith %}
+
+<div class="card rounded-4 border-0 shadow-sm p-4" style="border-radius:20px!important;max-width:500px">
+  <div class="alert alert-warning rounded-4" style="font-size:12px">
+    ⚠️ <b>Security Tip:</b> Change default <code>admin / admin123</code> to your school's real admin credentials after handover!
+  </div>
+
+  <form method="POST">
+    <label class="fw-bold small mb-1">Full Name</label>
+    <input name="name" class="form-control rounded-pill mb-3 p-3" value="{{user.name}}" required>
+
+    <label class="fw-bold small mb-1">Username (Login ID)</label>
+    <input name="username" class="form-control rounded-pill mb-3 p-3" value="{{user.username}}" required>
+    <small class="text-muted d-block mb-3" style="font-size:11px">This will be your new login username</small>
+
+    <label class="fw-bold small mb-1">Email Address</label>
+    <input name="email" class="form-control rounded-pill mb-3 p-3" type="email" value="{{user.email}}" required>
+
+    <label class="fw-bold small mb-1">New Password (Leave blank if you don't want to change)</label>
+    <input name="password" class="form-control rounded-pill mb-3 p-3" type="password" placeholder="Enter new password">
+
+    <button class="btn btn-success w-100 rounded-pill fw-bold p-3 mt-2">💾 Save Changes</button>
+  </form>
+
+  <hr class="my-4">
+  <small class="text-muted" style="font-size:11px">
+    Current Login: <b>{{user.username}} / {{user.email}}</b><br>
+    Role: <b>{{user.role|upper}}</b> • ID: {{user.id}}
+  </small>
+</div>
+{% endblock %}

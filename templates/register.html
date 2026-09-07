@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Register - ZDSPGC Lost & Found</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>body{background:#0A3D1F;display:flex;align-items:center;justify-content:center;min-height:100vh}</style>
+</head>
+<body>
+<div class="card rounded-4 border-0 shadow-lg p-4" style="width:420px;border-radius:24px!important">
+<h4 class="fw-bold text-center" style="color:#0A3D1F">📝 Register - ZDSPGC</h4>
+<p class="text-muted text-center" style="font-size:12px">Student auto-approved, Staff needs admin approval</p>
+{% with m=get_flashed_messages() %}
+{% if m %}<div class="alert alert-warning rounded-pill py-2" style="font-size:13px">{{m[0]}}</div>{% endif %}
+{% endwith %}
+<form method="POST">
+<input name="name" class="form-control rounded-pill mb-3 p-3" placeholder="Full Name" required>
+<input name="username" class="form-control rounded-pill mb-3 p-3" placeholder="Username (e.g. juan123)" required>
+<input name="email" class="form-control rounded-pill mb-3 p-3" placeholder="Your own email (e.g. juan@gmail.com)" type="email" required>
+<input name="password" class="form-control rounded-pill mb-3 p-3" placeholder="Password" type="password" required>
+<select name="role" class="form-select rounded-pill mb-3 p-3" required>
+<option value="" disabled selected>Select Role</option>
+<option value="student">Student - Auto Approved</option>
+<option value="staff">Staff - Needs Admin Approval</option>
+</select>
+<button class="btn btn-success w-100 rounded-pill fw-bold p-3">Register</button>
+</form>
+<div class="text-center mt-3">
+<small style="font-size:13px">Already have account? <a href="/login" class="fw-bold text-success text-decoration-none">Login here</a></small>
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{% extends 'base.html' %}{% block content %}
+<h4 class="fw-bold">Matches - Ready to Return</h4>
+<p class="text-muted small">Matched items - verified by staff - ready for Admin return to owner.</p>
+
+<div class="row mt-4">
+  <div class="col-md-12">
+    <h6>Matched Items - Interviewed by Staff</h6>
+    <div class="row">
+    {% for i in matched %}
+      <div class="col-md-4 mb-3">
+        <div class="card rounded-4 p-3 border-warning" style="background:#FFF8E1">
+          <span class="badge bg-warning text-dark rounded-pill">{{i.status}}</span> 
+          {{i.name}} - {{i.location}}<br>
+          <small class="text-muted">{{i.reported_by}}</small>
+          <div class="mt-2">
+            {% if session.role.lower() == 'admin' %}
+              <a href="/return/{{i.id}}" class="btn btn-success btn-sm rounded-pill">Return</a>
+            {% else %}
+              <small class="text-muted d-block mt-1" style="font-size:10px">Waiting for Admin Return</small>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="col-12">
+        <div class="alert alert-info rounded-4 bg-white">No matched items yet.</div>
+      </div>
+    {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}
