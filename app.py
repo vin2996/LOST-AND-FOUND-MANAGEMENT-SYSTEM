@@ -3,7 +3,6 @@ import os, sqlite3
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from functools import wraps
-
 try:
     import psycopg
     from psycopg.rows import dict_row
@@ -136,7 +135,7 @@ def login():
             user=cur.fetchone()
         else:
             user=db.execute("SELECT * FROM users WHERE (email=? OR username=?) AND password=?",(email,email,pw)).fetchone()
-        db.close()
+            db.close()
         if user:
             if user['is_approved']==0:
                 flash('Account pending approval by admin. Please wait for staff approval.')
@@ -170,7 +169,7 @@ def register():
             else:
                 db.execute("INSERT INTO users (username,email,password,role,name,is_approved) VALUES (?,?,?,?,?,?)", (username,email,pw,role,name,is_approved))
                 db.commit()
-            db.close()
+                db.close()
             if role=='student':
                 flash('Registration successful! Student auto-approved, you can now login.')
             else:
@@ -205,7 +204,7 @@ def dashboard():
         matched=db.execute("SELECT COUNT(*) FROM items WHERE status='Matched'").fetchone()[0]
         returned=db.execute("SELECT COUNT(*) FROM items WHERE status='Returned'").fetchone()[0]
         items=db.execute("SELECT * FROM items ORDER BY id DESC LIMIT 8").fetchall()
-    db.close()
+        db.close()
     return render_template('dashboard.html', lost=lost, found=found, matched=matched, returned=returned, items=items)
 
 @app.route('/items')
@@ -240,7 +239,7 @@ def items_page():
                 items=db.execute("SELECT * FROM items ORDER BY id DESC").fetchall()
             else:
                 items=db.execute("SELECT * FROM items WHERE status=? ORDER BY id DESC",(status,)).fetchall()
-    db.close()
+        db.close()
     return render_template('items.html', items=items, filter=status, q=q)
 
 @app.route('/report', methods=['GET','POST'])
@@ -273,10 +272,11 @@ def edit_item(id):
         cur=db.cursor(); cur.execute("SELECT * FROM items WHERE id=%s",(id,)); item=cur.fetchone()
     else:
         item=db.execute("SELECT * FROM items WHERE id=?",(id,)).fetchone()
-    if session.get('role')!='admin' and item['reported_by']!=session.get('email'):
+    # Updated permission: admin and staff can edit all, students can edit own only
+    if session.get('role') not in ['admin','staff'] and item['reported_by']!=session.get('email'):
         if not is_pg():
             db.close()
-        flash('Only the person who reported it or the admin can edit')
+        flash('Only the person who reported it, staff, or admin can edit')
         return redirect('/items')
     if request.method=='POST':
         file=request.files.get('image'); filename=item['image']
@@ -351,7 +351,7 @@ def matches_page():
         matched = cur.fetchall()
     else:
         matched = db.execute("SELECT * FROM items WHERE status='Matched' ORDER BY id DESC").fetchall()
-    db.close()
+        db.close()
     return render_template('matches.html', matched=matched)
 
 @app.route('/claims')
@@ -375,7 +375,7 @@ def users_page():
     else:
         users=db.execute("SELECT * FROM users").fetchall()
         pending=db.execute("SELECT * FROM users WHERE is_approved=0").fetchall()
-    db.close()
+        db.close()
     return render_template('users.html', users=users, pending=pending)
 
 @app.route('/approve/<int:id>')
