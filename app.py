@@ -3,7 +3,6 @@ import os, sqlite3
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from functools import wraps
-
 try:
     import psycopg
     from psycopg.rows import dict_row
@@ -31,21 +30,25 @@ os.makedirs('templates', exist_ok=True)
 ALLOWED_EXT = {'png','jpg','jpeg','gif'}
 
 def get_db():
-    if HAS_POSTGRES and os.environ.get('DATABASE_URL'):
-        db = getattr(g, '_database', None)
-        if db is None:
-            url = os.environ.get('DATABASE_URL')
+    # Force Postgres on Render
+    db_url = os.environ.get('DATABASE_URL')
+    if HAS_POSTGRES and db_url:
+        if not hasattr(g, '_database') or g._database is None:
+            url = db_url
             if url.startswith("postgres://"):
                 url = url.replace("postgres://", "postgresql://", 1)
             if USE_PSYCOPG3:
-                db = g._database = psycopg.connect(url, row_factory=dict_row)
+                g._database = psycopg.connect(url, row_factory=dict_row)
             else:
-                db = g._database = psycopg2.connect(url, sslmode='require', cursor_factory=RealDictCursor)
+                g._database = psycopg2.connect(url, sslmode='require', cursor_factory=RealDictCursor)
             g.db_is_pg = True
-        return db
+        return g._database
     else:
         g.db_is_pg = False
-        conn = sqlite3.connect('database.db')
+        # Use absolute path for Render
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.join(base_dir, 'database.db')
+        conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -56,20 +59,28 @@ def is_pg():
 def close_connection(exception):
     db = getattr(g, '_database', None)
     if db is not None:
-        db.close()
+        try:
+            db.close()
+        except:
+            pass
 
 def init_db():
     db = get_db()
     pg = is_pg()
+    print(f"INIT DB - is_pg: {pg}, HAS_POSTGRES: {HAS_POSTGRES}")
     if pg:
         cur = db.cursor()
         cur.execute('''CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email TEXT UNIQUE, password TEXT, role TEXT, name TEXT, is_approved INTEGER DEFAULT 1, username TEXT UNIQUE)''')
         cur.execute('''CREATE TABLE IF NOT EXISTS items (id SERIAL PRIMARY KEY, name TEXT, category TEXT, description TEXT, location TEXT, status TEXT, image TEXT, reported_by TEXT, date_reported TEXT, date_returned TEXT, time_returned TEXT, claimed_by TEXT)''')
         cur.execute("SELECT COUNT(*) as c FROM users")
-        if cur.fetchone()['c']==0:
+        row = cur.fetchone()
+        count = row['c'] if isinstance(row, dict) else row[0]
+        if count==0:
             cur.execute("INSERT INTO users (email,password,role,name,is_approved,username) VALUES (%s,%s,%s,%s,%s,%s)", ('admin@zdspgc.edu.ph','admin123','admin','Admin',1,'admin'))
         cur.execute("SELECT COUNT(*) as c FROM items")
-        if cur.fetchone()['c']==0:
+        row = cur.fetchone()
+        count = row['c'] if isinstance(row, dict) else row[0]
+        if count==0:
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             cur.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", ('Brown Leather Wallet','Wallet','Found near library with cash inside','Library - 2nd Floor','Found','wallet.jpg','admin@zdspgc.edu.ph',now))
             cur.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", ('Student ID Card - Juan Dela Cruz','ID Card','ID with blue lanyard','Cafeteria','Matched','id.jpg','admin@zdspgc.edu.ph',now))
@@ -93,6 +104,8 @@ def init_db():
             db.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (?,?,?,?,?,?,?,?)", ('Black Backpack Jansport','Bag','Returned to owner','Admin Office','Returned','backpack.jpg','admin@zdspgc.edu.ph',now))
         db.commit()
         db.close()
+
+# --- YOUR ROUTES - SAME AS BEFORE ---
 
 def login_required(f):
     @wraps(f)
@@ -162,8 +175,7 @@ def register():
                 flash('Registration successful! Staff account pending admin approval.')
             return redirect('/login')
         except Exception as e:
-            if not is_pg():
-                db.close()
+            if not is_pg(): db.close()
             print(e)
             flash('Username or email already exists!')
     return render_template('register.html')
@@ -207,23 +219,17 @@ def items_page():
             else:
                 cur.execute("SELECT * FROM items WHERE status=%s AND (name ILIKE %s OR category ILIKE %s OR location ILIKE %s OR description ILIKE %s OR reported_by ILIKE %s) ORDER BY id DESC",(status,like,like,like,like,like))
         else:
-            if status=='All':
-                cur.execute("SELECT * FROM items ORDER BY id DESC")
-            else:
-                cur.execute("SELECT * FROM items WHERE status=%s ORDER BY id DESC",(status,))
+            if status=='All': cur.execute("SELECT * FROM items ORDER BY id DESC")
+            else: cur.execute("SELECT * FROM items WHERE status=%s ORDER BY id DESC",(status,))
         items=cur.fetchall()
     else:
         if q:
             like=f"%{q}%"
-            if status=='All':
-                items=db.execute("SELECT * FROM items WHERE name LIKE? OR category LIKE? OR location LIKE? OR description LIKE? OR reported_by LIKE? ORDER BY id DESC",(like,like,like,like,like)).fetchall()
-            else:
-                items=db.execute("SELECT * FROM items WHERE status=? AND (name LIKE? OR category LIKE? OR location LIKE? OR description LIKE? OR reported_by LIKE?) ORDER BY id DESC",(status,like,like,like,like,like)).fetchall()
+            if status=='All': items=db.execute("SELECT * FROM items WHERE name LIKE? OR category LIKE? OR location LIKE? OR description LIKE? OR reported_by LIKE? ORDER BY id DESC",(like,like,like,like,like)).fetchall()
+            else: items=db.execute("SELECT * FROM items WHERE status=? AND (name LIKE? OR category LIKE? OR location LIKE? OR description LIKE? OR reported_by LIKE?) ORDER BY id DESC",(status,like,like,like,like,like)).fetchall()
         else:
-            if status=='All':
-                items=db.execute("SELECT * FROM items ORDER BY id DESC").fetchall()
-            else:
-                items=db.execute("SELECT * FROM items WHERE status=? ORDER BY id DESC",(status,)).fetchall()
+            if status=='All': items=db.execute("SELECT * FROM items ORDER BY id DESC").fetchall()
+            else: items=db.execute("SELECT * FROM items WHERE status=? ORDER BY id DESC",(status,)).fetchall()
         db.close()
     return render_template('items.html', items=items, filter=status, q=q)
 
@@ -335,7 +341,7 @@ def matches_page():
         matched = db.execute("SELECT * FROM items WHERE status='Matched' ORDER BY id DESC").fetchall()
         db.close()
     return render_template('matches.html', matched=matched)
-  
+
 @app.route('/claims')
 @login_required
 def claims_page():
@@ -345,7 +351,6 @@ def claims_page():
     else:
         items=db.execute("SELECT * FROM items WHERE status='Returned' ORDER BY date_returned DESC").fetchall(); db.close()
     return render_template('claims.html', items=items)
-
 
 @app.route('/users')
 @login_required
@@ -437,12 +442,13 @@ def profile_page():
     if not is_pg(): db.close()
     return render_template('profile.html', user=user)
 
+# FIX: AUTO CREATE TABLES ON STARTUP - KAHIT NAKA GUNICORN
+with app.app_context():
+    try:
+        init_db()
+        print("ZDSPGC DB INIT SUCCESS!")
+    except Exception as e:
+        print(f"DB Init Error: {e}")
+
 if __name__=='__main__':
-    if not os.environ.get('DATABASE_URL'):
-        if not os.path.exists('database.db'):
-            init_db()
-    else:
-        with app.app_context():
-            try: init_db()
-            except Exception as e: print(f"DB Init: {e}")
     app.run(debug=True)
