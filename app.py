@@ -17,7 +17,6 @@ except:
     except:
         HAS_POSTGRES = False
         USE_PSYCOPG3 = False
-
 app = Flask(__name__)
 app.secret_key = 'zdspgc2026'
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
@@ -26,15 +25,10 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs('static/css', exist_ok=True)
 os.makedirs('static/js', exist_ok=True)
 os.makedirs('templates', exist_ok=True)
-
 ALLOWED_EXT = {'png','jpg','jpeg','gif'}
-
-# === PH TIME FIX - LAHAT NG TIME DITO NA ===
 PH_TZ = timezone(timedelta(hours=8))
-
 def get_ph_now():
     return datetime.now(PH_TZ)
-
 def get_db():
     db_url = os.environ.get('DATABASE_URL')
     if HAS_POSTGRES and db_url:
@@ -55,10 +49,8 @@ def get_db():
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return conn
-
 def is_pg():
     return getattr(g, 'db_is_pg', False)
-
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(g, '_database', None)
@@ -67,7 +59,6 @@ def close_connection(exception):
             db.close()
         except:
             pass
-
 def init_db():
     db = get_db()
     pg = is_pg()
@@ -85,7 +76,7 @@ def init_db():
         row = cur.fetchone()
         count = row['c'] if isinstance(row, dict) else row[0]
         if count==0:
-            now = get_ph_now().strftime("%Y-%m-%d %H:%M:%S")
+            now = get_ph_now().strftime("%Y-%m-%d %I:%M:%S %p")
             cur.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", ('Brown Leather Wallet','Wallet','Found near library with cash inside','Library - 2nd Floor','Found','wallet.jpg','admin@zdspgc.edu.ph',now))
             cur.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", ('Student ID Card - Juan Dela Cruz','ID Card','ID with blue lanyard','Cafeteria','Matched','id.jpg','admin@zdspgc.edu.ph',now))
             cur.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", ('Set of Keys with Keychain','Keys','3 keys + black keychain','Parking Lot','Lost','keys.jpg','admin@zdspgc.edu.ph',now))
@@ -105,14 +96,13 @@ def init_db():
         if db.execute("SELECT COUNT(*) FROM users").fetchone()[0]==0:
             db.execute("INSERT INTO users (email,password,role,name,is_approved,username) VALUES (?,?,?,?,?,?)", ('admin@zdspgc.edu.ph','admin123','admin','Admin',1,'admin'))
         if db.execute("SELECT COUNT(*) FROM items").fetchone()[0]==0:
-            now = get_ph_now().strftime("%Y-%m-%d %H:%M:%S")
+            now = get_ph_now().strftime("%Y-%m-%d %I:%M:%S %p")
             db.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (?,?,?,?,?,?,?,?)", ('Brown Leather Wallet','Wallet','Found near library with cash inside','Library - 2nd Floor','Found','wallet.jpg','admin@zdspgc.edu.ph',now))
             db.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (?,?,?,?,?,?,?,?)", ('Student ID Card - Juan Dela Cruz','ID Card','ID with blue lanyard','Cafeteria','Matched','id.jpg','admin@zdspgc.edu.ph',now))
             db.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (?,?,?,?,?,?,?,?)", ('Set of Keys with Keychain','Keys','3 keys + black keychain','Parking Lot','Lost','keys.jpg','admin@zdspgc.edu.ph',now))
             db.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (?,?,?,?,?,?,?,?)", ('Black Backpack Jansport','Bag','Returned to owner','Admin Office','Returned','backpack.jpg','admin@zdspgc.edu.ph',now))
         db.commit()
         db.close()
-
 def login_required(f):
     @wraps(f)
     def dec(*a,**kw):
@@ -120,7 +110,6 @@ def login_required(f):
             return redirect('/login')
         return f(*a,**kw)
     return dec
-
 def admin_required(f):
     @wraps(f)
     def dec(*a,**kw):
@@ -129,7 +118,6 @@ def admin_required(f):
             return redirect('/')
         return f(*a,**kw)
     return dec
-
 @app.route('/login', methods=['GET','POST'])
 def login():
     if request.method=='POST':
@@ -141,7 +129,7 @@ def login():
             user=cur.fetchone()
         else:
             user=db.execute("SELECT * FROM users WHERE (email=? OR username=?) AND password=?",(email,email,pw)).fetchone()
-            db.close()
+        db.close()
         if user:
             if user['is_approved']==0:
                 flash('Account pending approval by admin. Please wait for staff approval.')
@@ -150,7 +138,6 @@ def login():
             return redirect('/')
         flash('Wrong email/password')
     return render_template('login.html')
-
 @app.route('/register', methods=['GET','POST'])
 def register():
     if request.method=='POST':
@@ -175,7 +162,7 @@ def register():
             else:
                 db.execute("INSERT INTO users (username,email,password,role,name,is_approved) VALUES (?,?,?,?,?,?)", (username,email,pw,role,name,is_approved))
                 db.commit()
-                db.close()
+            db.close()
             if role=='student':
                 flash('Registration successful! Student auto-approved, you can now login.')
             else:
@@ -188,11 +175,9 @@ def register():
             flash('Username or email already exists!')
             return render_template('register.html')
     return render_template('register.html')
-
 @app.route('/logout')
 def logout():
     session.clear(); return redirect('/login')
-
 @app.route('/')
 @login_required
 def dashboard():
@@ -210,9 +195,8 @@ def dashboard():
         matched=db.execute("SELECT COUNT(*) FROM items WHERE status='Matched'").fetchone()[0]
         returned=db.execute("SELECT COUNT(*) FROM items WHERE status='Returned'").fetchone()[0]
         items=db.execute("SELECT * FROM items ORDER BY id DESC LIMIT 8").fetchall()
-        db.close()
+    db.close()
     return render_template('dashboard.html', lost=lost, found=found, matched=matched, returned=returned, items=items)
-
 @app.route('/items')
 @login_required
 def items_page():
@@ -245,9 +229,8 @@ def items_page():
                 items=db.execute("SELECT * FROM items ORDER BY id DESC").fetchall()
             else:
                 items=db.execute("SELECT * FROM items WHERE status=? ORDER BY id DESC",(status,)).fetchall()
-        db.close()
+    db.close()
     return render_template('items.html', items=items, filter=status, q=q)
-
 @app.route('/report', methods=['GET','POST'])
 @login_required
 def report():
@@ -258,7 +241,7 @@ def report():
         file=request.files.get('image'); filename='no-image.png'
         if file and file.filename!='':
             filename=secure_filename(file.filename); file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        now=get_ph_now().strftime("%Y-%m-%d %H:%M:%S")
+        now=get_ph_now().strftime("%Y-%m-%d %I:%M:%S %p")
         db=get_db()
         if is_pg():
             cur=db.cursor()
@@ -269,7 +252,6 @@ def report():
             db.commit(); db.close()
         return redirect('/items')
     return render_template('report.html')
-
 @app.route('/edit/<int:id>', methods=['GET','POST'])
 @login_required
 def edit_item(id):
@@ -297,7 +279,6 @@ def edit_item(id):
     if not is_pg():
         db.close()
     return render_template('edit.html', item=item)
-
 @app.route('/delete/<int:id>')
 @login_required
 def delete_item(id):
@@ -309,7 +290,6 @@ def delete_item(id):
     else:
         db.execute("DELETE FROM items WHERE id=?",(id,)); db.commit(); db.close()
     return redirect('/items')
-
 @app.route('/return/<int:id>')
 @login_required
 def return_item(id):
@@ -324,7 +304,24 @@ def return_item(id):
     else:
         db.execute("UPDATE items SET status='Returned', date_returned=?, time_returned=?, claimed_by=? WHERE id=?", (full,t,session['email'],id)); db.commit(); db.close()
     return redirect('/')
-
+@app.route('/found/<int:id>')
+@login_required
+def found_item(id):
+    db=get_db()
+    if is_pg():
+        cur=db.cursor()
+        cur.execute("SELECT * FROM items WHERE id=%s",(id,))
+        item=cur.fetchone()
+        if item and item['status']=='Lost':
+            cur.execute("UPDATE items SET status='Found' WHERE id=%s",(id,))
+            db.commit()
+    else:
+        item=db.execute("SELECT * FROM items WHERE id=?",(id,)).fetchone()
+        if item and item['status']=='Lost':
+            db.execute("UPDATE items SET status='Found' WHERE id=?",(id,))
+            db.commit()
+        db.close()
+    return redirect('/items')
 @app.route('/match/<int:id>')
 @login_required
 def match_item(id):
@@ -336,7 +333,6 @@ def match_item(id):
     else:
         db.execute("UPDATE items SET status='Matched' WHERE id=?",(id,)); db.commit(); db.close()
     return redirect('/matches')
-
 @app.route('/details/<int:id>')
 @login_required
 def details(id):
@@ -346,7 +342,6 @@ def details(id):
     else:
         item=db.execute("SELECT * FROM items WHERE id=?",(id,)).fetchone(); db.close()
     return render_template('item_details.html', item=item)
-
 @app.route('/matches')
 @login_required
 def matches_page():
@@ -360,9 +355,8 @@ def matches_page():
         matched = cur.fetchall()
     else:
         matched = db.execute("SELECT * FROM items WHERE status='Matched' ORDER BY id DESC").fetchall()
-        db.close()
+    db.close()
     return render_template('matches.html', matched=matched)
-
 @app.route('/claims')
 @login_required
 def claims_page():
@@ -372,7 +366,6 @@ def claims_page():
     else:
         items=db.execute("SELECT * FROM items WHERE status='Returned' ORDER BY date_returned DESC").fetchall(); db.close()
     return render_template('claims.html', items=items)
-
 @app.route('/users')
 @login_required
 @admin_required
@@ -384,9 +377,8 @@ def users_page():
     else:
         users=db.execute("SELECT * FROM users").fetchall()
         pending=db.execute("SELECT * FROM users WHERE is_approved=0").fetchall()
-        db.close()
+    db.close()
     return render_template('users.html', users=users, pending=pending)
-
 @app.route('/approve/<int:id>')
 @login_required
 @admin_required
@@ -398,7 +390,6 @@ def approve_user(id):
         db.execute("UPDATE users SET is_approved=1 WHERE id=?",(id,)); db.commit(); db.close()
     flash('User approved successfully!')
     return redirect('/users')
-
 @app.route('/reject/<int:id>')
 @login_required
 @admin_required
@@ -410,7 +401,6 @@ def reject_user(id):
         db.execute("DELETE FROM users WHERE id=?",(id,)); db.commit(); db.close()
     flash('User registration rejected and deleted.')
     return redirect('/users')
-
 @app.route('/archive')
 @login_required
 @admin_required
@@ -421,7 +411,6 @@ def archive_page():
     else:
         items=db.execute("SELECT * FROM items WHERE status='Returned'").fetchall(); db.close()
     return render_template('archive.html', items=items)
-
 @app.route('/profile', methods=['GET','POST'])
 @login_required
 def profile_page():
@@ -464,7 +453,6 @@ def profile_page():
     if not is_pg():
         db.close()
     return render_template('profile.html', user=user)
-
 @app.route('/fixdb')
 def fixdb():
     try:
@@ -472,13 +460,11 @@ def fixdb():
         return "DB FIXED! Go to /login - admin@zdspgc.edu.ph / admin123"
     except Exception as e:
         return f"Error: {e}"
-
 with app.app_context():
     try:
         init_db()
         print("ZDSPGC DB INIT SUCCESS!")
     except Exception as e:
         print(f"DB Init Error: {e}")
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
