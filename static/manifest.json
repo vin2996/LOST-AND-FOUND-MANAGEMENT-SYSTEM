@@ -8,14 +8,14 @@
   "theme_color": "#0a4d2e",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/565/565547.png",
+      "src": "/static/icon.webp",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/webp"
     },
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/565/565547.png",
+      "src": "/static/icon.webp",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/webp"
     }
   ]
 }
