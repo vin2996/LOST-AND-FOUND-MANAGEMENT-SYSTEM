@@ -1,1 +1,50 @@
-{% extends 'base.html' %}{% block content %} <div class="d-flex justify-content-between align-items-center mb-4"> <h4 class="fw-bold" style="color:#0A3D1F">📦 Items - All Lost & Found</h4> <a href="/report" class="btn btn-warning rounded-pill px-4 fw-bold">+ Report Item</a> </div> <form method="GET" action="/items" class="mb-3"><div class="input-group" style="max-width:500px"><input type="text" name="q" value="{{q or ''}}" class="form-control rounded-pill rounded-end px-4" placeholder="Search items, ID, location, category..." autofocus><input type="hidden" name="status" value="{{filter}}"><button class="btn btn-success rounded-pill rounded-start px-4" type="submit">Search</button>{% if q %}<a href="/items?status={{filter}}" class="btn btn-outline-secondary rounded-pill ms-2">Clear</a>{% endif %}</div></form> {% if q %}<p class="small text-muted mb-2">Search results for "<b>{{q}}</b>" - {{items|length}} found</p>{% endif %} <div class="mb-3"> <a href="/items?status=All&q={{q or ''}}" class="btn {% if filter=='All' %}btn-success{% else %}btn-outline-success{% endif %} rounded-pill btn-sm">All</a> <a href="/items?status=Lost&q={{q or ''}}" class="btn {% if filter=='Lost' %}btn-danger{% else %}btn-outline-danger{% endif %} rounded-pill btn-sm">Lost</a> <a href="/items?status=Found&q={{q or ''}}" class="btn {% if filter=='Found' %}btn-primary{% else %}btn-outline-primary{% endif %} rounded-pill btn-sm">Found</a> <a href="/items?status=Matched&q={{q or ''}}" class="btn {% if filter=='Matched' %}btn-warning{% else %}btn-outline-warning{% endif %} rounded-pill btn-sm">Matched</a> <a href="/items?status=Returned&q={{q or ''}}" class="btn {% if filter=='Returned' %}btn-secondary{% else %}btn-outline-secondary{% endif %} rounded-pill btn-sm">Returned</a> </div> <div class="row g-4"> {% for item in items %} <div class="col-md-4"> <div class="card rounded-4 border-0 shadow-sm overflow-hidden" style="border-radius:20px!important"> <img src="{{url_for('static',filename='uploads/'+item.image)}}" style="height:160px;object-fit:cover" onerror="this.src='https://via.placeholder.com/300x160?text={{item.name}}'"> <div class="p-3"> <span class="badge rounded-pill {% if item.status=='Lost' %}bg-danger{% elif item.status=='Found' %}bg-primary{% elif item.status=='Matched' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{item.status}}</span> <h6 class="fw-bold mt-2 mb-1">{{item.name}}</h6> <small class="text-muted">{{item.category}} • {{item.location}}<br>By: {{item.reported_by}}<br>{{item.date_reported[:10]}}</small> <div class="mt-3 d-flex gap-1 flex-wrap"> <a href="/details/{{item.id}}" class="btn btn-sm btn-outline-secondary rounded-pill">View</a> {% if session.role=='admin' or session.role=='staff' or item.reported_by==session.email %} <a href="/edit/{{item.id}}" class="btn btn-sm btn-outline-success rounded-pill">Edit</a> {% endif %} {% if session.role in ['admin','staff'] and item.status=='Found' %} <a href="/match/{{item.id}}" class="btn btn-sm btn-outline-warning rounded-pill">Match</a> {% endif %} {% if session.role=='admin' %} {% if item.status=='Matched' %} <a href="/return/{{item.id}}" class="btn btn-sm btn-warning rounded-pill">Return</a> {% endif %} <a href="/delete/{{item.id}}" onclick="return confirm('Delete this item?')" class="btn btn-sm btn-outline-danger rounded-pill">Delete</a> {% endif %} </div> {% if session.role!='admin' %} <small class="text-muted d-block mt-2" style="font-size:10px">* Student: Edit own report only | Staff: Can match</small> {% endif %} </div> </div> </div> {% else %}<div class="col-12 text-center p-5"><h6 class="text-muted">No items found {% if q %}for "{{q}}"{% endif %}</h6></div>{% endfor %} </div> {% endblock %}
+{% extends 'base.html' %}{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+<h4 class="fw-bold" style="color:#0A3D1F">📦 Items - All Lost & Found</h4>
+<a href="/report" class="btn btn-warning rounded-pill px-4 fw-bold">+ Report Item</a>
+</div>
+<form method="GET" action="/items" class="mb-3"><div class="input-group" style="max-width:500px"><input type="text" name="q" value="{{q or ''}}" class="form-control rounded-pill rounded-end px-4" placeholder="Search items, ID, location, category..." autofocus><input type="hidden" name="status" value="{{filter}}"><button class="btn btn-success rounded-pill rounded-start px-4" type="submit">Search</button>{% if q %}<a href="/items?status={{filter}}" class="btn btn-outline-secondary rounded-pill ms-2">Clear</a>{% endif %}</div></form>
+{% if q %}<p class="small text-muted mb-2">Search results for "<b>{{q}}</b>" - {{items|length}} found</p>{% endif %}
+<div class="mb-3">
+<a href="/items?status=All&q={{q or ''}}" class="btn {% if filter=='All' %}btn-success{% else %}btn-outline-success{% endif %} rounded-pill btn-sm">All</a>
+<a href="/items?status=Lost&q={{q or ''}}" class="btn {% if filter=='Lost' %}btn-danger{% else %}btn-outline-danger{% endif %} rounded-pill btn-sm">Lost</a>
+<a href="/items?status=Found&q={{q or ''}}" class="btn {% if filter=='Found' %}btn-primary{% else %}btn-outline-primary{% endif %} rounded-pill btn-sm">Found</a>
+<a href="/items?status=Matched&q={{q or ''}}" class="btn {% if filter=='Matched' %}btn-warning{% else %}btn-outline-warning{% endif %} rounded-pill btn-sm">Matched</a>
+<a href="/items?status=Returned&q={{q or ''}}" class="btn {% if filter=='Returned' %}btn-secondary{% else %}btn-outline-secondary{% endif %} rounded-pill btn-sm">Returned</a>
+</div>
+<div class="row g-4">
+{% for item in items %}
+<div class="col-md-4">
+<div class="card rounded-4 border-0 shadow-sm overflow-hidden" style="border-radius:20px!important">
+<img src="{{url_for('static',filename='uploads/'+item.image)}}" style="height:160px;object-fit:cover" onerror="this.src='https://via.placeholder.com/300x160?text={{item.name}}'">
+<div class="p-3">
+<span class="badge rounded-pill {% if item.status=='Lost' %}bg-danger{% elif item.status=='Found' %}bg-primary{% elif item.status=='Matched' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{item.status}}</span>
+<h6 class="fw-bold mt-2 mb-1">{{item.name}}</h6>
+<small class="text-muted">{{item.category}} • {{item.location}}<br>By: {{item.reported_by}}<br>{{item.date_reported[:10]}}</small>
+<div class="mt-3 d-flex gap-1 flex-wrap">
+<a href="/details/{{item.id}}" class="btn btn-sm btn-outline-secondary rounded-pill">View</a>
+{% if item.status=='Lost' %}
+<a href="/found/{{item.id}}" class="btn btn-sm btn-primary rounded-pill">Found</a>
+{% endif %}
+{% if session.role=='admin' or session.role=='staff' or item.reported_by==session.email %}
+<a href="/edit/{{item.id}}" class="btn btn-sm btn-outline-success rounded-pill">Edit</a>
+{% endif %}
+{% if session.role in ['admin','staff'] and item.status=='Found' %}
+<a href="/match/{{item.id}}" class="btn btn-sm btn-outline-warning rounded-pill">Match</a>
+{% endif %}
+{% if session.role=='admin' %}
+{% if item.status=='Matched' %}
+<a href="/return/{{item.id}}" class="btn btn-sm btn-warning rounded-pill">Return</a>
+{% endif %}
+<a href="/delete/{{item.id}}" onclick="return confirm('Delete this item?')" class="btn btn-sm btn-outline-danger rounded-pill">Delete</a>
+{% endif %}
+</div>
+{% if session.role!='admin' %}
+<small class="text-muted d-block mt-2" style="font-size:10px">* Student: Edit own report only | Staff: Can match</small>
+{% endif %}
+</div>
+</div>
+</div>
+{% else %}<div class="col-12 text-center p-5"><h6 class="text-muted">No items found {% if q %}for "{{q}}"{% endif %}</h6></div>{% endfor %}
+</div>
+{% endblock %}
