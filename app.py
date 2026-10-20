@@ -17,6 +17,7 @@ except:
     except:
         HAS_POSTGRES = False
         USE_PSYCOPG3 = False
+
 app = Flask(__name__)
 app.secret_key = 'zdspgc2026'
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
@@ -25,32 +26,42 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs('static/css', exist_ok=True)
 os.makedirs('static/js', exist_ok=True)
 os.makedirs('templates', exist_ok=True)
-ALLOWED_EXT = {'png','jpg','jpeg','gif'}
+
 PH_TZ = timezone(timedelta(hours=8))
+
 def get_ph_now():
     return datetime.now(PH_TZ)
+
 def get_db():
     db_url = os.environ.get('DATABASE_URL')
     if HAS_POSTGRES and db_url:
-        if not hasattr(g, '_database') or g._database is None:
-            url = db_url
-            if url.startswith("postgres://"):
-                url = url.replace("postgres://", "postgresql://", 1)
-            if USE_PSYCOPG3:
-                g._database = psycopg.connect(url, row_factory=dict_row)
+        try:
+            if not hasattr(g, '_database') or g._database is None:
+                url = db_url
+                if url.startswith("postgres://"):
+                    url = url.replace("postgres://", "postgresql://", 1)
+                clean_url = url.split("?")[0]
+                if USE_PSYCOPG3:
+                    g._database = psycopg.connect(clean_url, row_factory=dict_row, connect_timeout=10)
+                else:
+                    g._database = psycopg2.connect(clean_url, sslmode='require', cursor_factory=RealDictCursor, connect_timeout=10)
+                g.db_is_pg = True
+                return g._database
             else:
-                g._database = psycopg2.connect(url, sslmode='require', cursor_factory=RealDictCursor)
-            g.db_is_pg = True
-        return g._database
-    else:
-        g.db_is_pg = False
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        db_path = os.path.join(base_dir, 'database.db')
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+                return g._database
+        except Exception as e:
+            print(f"PG CONNECT FAILED: {e}")
+            g.db_is_pg = False
+    g.db_is_pg = False
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(base_dir, 'database.db')
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 def is_pg():
     return getattr(g, 'db_is_pg', False)
+
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(g, '_database', None)
@@ -59,10 +70,11 @@ def close_connection(exception):
             db.close()
         except:
             pass
+
 def init_db():
     db = get_db()
     pg = is_pg()
-    print(f"INIT DB - is_pg: {pg}, HAS_POSTGRES: {HAS_POSTGRES}")
+    print(f"INIT DB - is_pg: {pg}")
     if pg:
         cur = db.cursor()
         cur.execute('''CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email TEXT UNIQUE, password TEXT, role TEXT, name TEXT, is_approved INTEGER DEFAULT 1, username TEXT UNIQUE)''')
@@ -103,6 +115,7 @@ def init_db():
             db.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (?,?,?,?,?,?,?,?)", ('Black Backpack Jansport','Bag','Returned to owner','Admin Office','Returned','backpack.jpg','admin@zdspgc.edu.ph',now))
         db.commit()
         db.close()
+
 def login_required(f):
     @wraps(f)
     def dec(*a,**kw):
@@ -110,34 +123,45 @@ def login_required(f):
             return redirect('/login')
         return f(*a,**kw)
     return dec
+
 def admin_required(f):
     @wraps(f)
     def dec(*a,**kw):
         if session.get('role')!='admin':
-            flash('Admin only!')
+            flash('Pang Admin lang ito!')
             return redirect('/')
         return f(*a,**kw)
     return dec
+
 @app.route('/login', methods=['GET','POST'])
 def login():
     if request.method=='POST':
-        email=request.form['email']; pw=request.form['password']
-        db=get_db()
-        if is_pg():
-            cur=db.cursor()
-            cur.execute("SELECT * FROM users WHERE (email=%s OR username=%s) AND password=%s",(email,email,pw))
-            user=cur.fetchone()
-        else:
-            user=db.execute("SELECT * FROM users WHERE (email=? OR username=?) AND password=?",(email,email,pw)).fetchone()
-        db.close()
-        if user:
-            if user['is_approved']==0:
-                flash('Account pending approval by admin. Please wait for staff approval.')
-                return render_template('login.html')
-            session['user_id']=user['id']; session['email']=user['email']; session['role']=user['role']; session['name']=user['name']
-            return redirect('/')
-        flash('Wrong email/password')
+        email=request.form['email']
+        pw=request.form['password']
+        try:
+            db=get_db()
+            if is_pg():
+                cur=db.cursor()
+                cur.execute("SELECT * FROM users WHERE (email=%s OR username=%s) AND password=%s",(email,email,pw))
+                user=cur.fetchone()
+            else:
+                user=db.execute("SELECT * FROM users WHERE (email=? OR username=?) AND password=?",(email,email,pw)).fetchone()
+                db.close()
+            if user:
+                if user['is_approved']==0:
+                    flash('Hindi pa approved account mo, hintay lang sa admin.')
+                    return render_template('login.html')
+                session['user_id']=user['id']
+                session['email']=user['email']
+                session['role']=user['role']
+                session['name']=user['name']
+                return redirect('/')
+            flash('Mali email o password')
+        except Exception as e:
+            print(f"LOGIN ERROR: {e}")
+            flash(f'Problema sa database, pakisubukan ulit: {e}')
     return render_template('login.html')
+
 @app.route('/register', methods=['GET','POST'])
 def register():
     if request.method=='POST':
@@ -147,10 +171,10 @@ def register():
         role=request.form['role']
         email=request.form['email'].strip()
         if not email:
-            flash('Email is required! Please enter your own email address.')
+            flash('Kailangan ng email! Ilagay mo email mo.')
             return render_template('register.html')
         if role not in ['staff','student']:
-            flash('Invalid role. Only staff or student allowed.')
+            flash('Bawal role na yan, staff o student lang pwede.')
             return render_template('register.html')
         db=get_db()
         try:
@@ -162,41 +186,50 @@ def register():
             else:
                 db.execute("INSERT INTO users (username,email,password,role,name,is_approved) VALUES (?,?,?,?,?,?)", (username,email,pw,role,name,is_approved))
                 db.commit()
-            db.close()
+                db.close()
             if role=='student':
-                flash('Registration successful! Student auto-approved, you can now login.')
+                flash('Tagumpay! Auto-approved ka na, pwede ka na mag login.')
             else:
-                flash('Registration successful! Staff account pending admin approval.')
+                flash('Tagumpay! Hintayin mo approval ni admin.')
             return redirect('/login')
         except Exception as e:
             if not is_pg():
                 db.close()
             print(e)
-            flash('Username or email already exists!')
+            flash('Umuulit username o email!')
             return render_template('register.html')
     return render_template('register.html')
+
 @app.route('/logout')
 def logout():
-    session.clear(); return redirect('/login')
+    session.clear()
+    return redirect('/login')
+
 @app.route('/')
 @login_required
 def dashboard():
     db=get_db()
     if is_pg():
         cur=db.cursor()
-        cur.execute("SELECT COUNT(*) as c FROM items WHERE status='Lost'"); lost=cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM items WHERE status='Found'"); found=cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM items WHERE status='Matched'"); matched=cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM items WHERE status='Returned'"); returned=cur.fetchone()['c']
-        cur.execute("SELECT * FROM items ORDER BY id DESC LIMIT 8"); items=cur.fetchall()
+        cur.execute("SELECT COUNT(*) as c FROM items WHERE status='Lost'")
+        lost=cur.fetchone()['c']
+        cur.execute("SELECT COUNT(*) as c FROM items WHERE status='Found'")
+        found=cur.fetchone()['c']
+        cur.execute("SELECT COUNT(*) as c FROM items WHERE status='Matched'")
+        matched=cur.fetchone()['c']
+        cur.execute("SELECT COUNT(*) as c FROM items WHERE status='Returned'")
+        returned=cur.fetchone()['c']
+        cur.execute("SELECT * FROM items ORDER BY id DESC LIMIT 8")
+        items=cur.fetchall()
     else:
         lost=db.execute("SELECT COUNT(*) FROM items WHERE status='Lost'").fetchone()[0]
         found=db.execute("SELECT COUNT(*) FROM items WHERE status='Found'").fetchone()[0]
         matched=db.execute("SELECT COUNT(*) FROM items WHERE status='Matched'").fetchone()[0]
         returned=db.execute("SELECT COUNT(*) FROM items WHERE status='Returned'").fetchone()[0]
         items=db.execute("SELECT * FROM items ORDER BY id DESC LIMIT 8").fetchall()
-    db.close()
+        db.close()
     return render_template('dashboard.html', lost=lost, found=found, matched=matched, returned=returned, items=items)
+
 @app.route('/items')
 @login_required
 def items_page():
@@ -229,18 +262,23 @@ def items_page():
                 items=db.execute("SELECT * FROM items ORDER BY id DESC").fetchall()
             else:
                 items=db.execute("SELECT * FROM items WHERE status=? ORDER BY id DESC",(status,)).fetchall()
-    db.close()
+        db.close()
     return render_template('items.html', items=items, filter=status, q=q)
+
 @app.route('/report', methods=['GET','POST'])
 @login_required
 def report():
     if request.method=='POST':
-        name=request.form['name']; category=request.form['category']
-        desc=request.form['description']; loc=request.form['location']
+        name=request.form['name']
+        category=request.form['category']
+        desc=request.form['description']
+        loc=request.form['location']
         stat=request.form['status']
-        file=request.files.get('image'); filename='no-image.png'
+        file=request.files.get('image')
+        filename='no-image.png'
         if file and file.filename!='':
-            filename=secure_filename(file.filename); file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            filename=secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         now=get_ph_now().strftime("%Y-%m-%d %I:%M:%S %p")
         db=get_db()
         if is_pg():
@@ -249,61 +287,81 @@ def report():
             db.commit()
         else:
             db.execute("INSERT INTO items (name,category,description,location,status,image,reported_by,date_reported) VALUES (?,?,?,?,?,?,?,?)", (name,category,desc,loc,stat,filename,session['email'],now))
-            db.commit(); db.close()
+            db.commit()
+            db.close()
         return redirect('/items')
     return render_template('report.html')
+
 @app.route('/edit/<int:id>', methods=['GET','POST'])
 @login_required
 def edit_item(id):
     db=get_db()
     if is_pg():
-        cur=db.cursor(); cur.execute("SELECT * FROM items WHERE id=%s",(id,)); item=cur.fetchone()
+        cur=db.cursor()
+        cur.execute("SELECT * FROM items WHERE id=%s",(id,))
+        item=cur.fetchone()
     else:
         item=db.execute("SELECT * FROM items WHERE id=?",(id,)).fetchone()
     if session.get('role') not in ['admin','staff'] and item['reported_by']!=session.get('email'):
         if not is_pg():
             db.close()
-        flash('Only the person who reported it, staff, or admin can edit')
+        flash('Ikaw lang nag report, staff o admin lang pwede mag edit')
         return redirect('/items')
     if request.method=='POST':
-        file=request.files.get('image'); filename=item['image']
+        file=request.files.get('image')
+        filename=item['image']
         if file and file.filename!='':
-            filename=secure_filename(file.filename); file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            filename=secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         if is_pg():
             cur.execute("UPDATE items SET name=%s,category=%s,description=%s,location=%s,status=%s,image=%s WHERE id=%s", (request.form['name'],request.form['category'],request.form['description'],request.form['location'],request.form['status'],filename,id))
             db.commit()
         else:
             db.execute("UPDATE items SET name=?,category=?,description=?,location=?,status=?,image=? WHERE id=?", (request.form['name'],request.form['category'],request.form['description'],request.form['location'],request.form['status'],filename,id))
-            db.commit(); db.close()
+            db.commit()
+            db.close()
         return redirect('/items')
     if not is_pg():
         db.close()
     return render_template('edit.html', item=item)
+
 @app.route('/delete/<int:id>')
 @login_required
 def delete_item(id):
     if session.get('role')!='admin':
-        flash('Admin only can delete'); return redirect('/items')
+        flash('Pang admin lang mag delete')
+        return redirect('/items')
     db=get_db()
     if is_pg():
-        cur=db.cursor(); cur.execute("DELETE FROM items WHERE id=%s",(id,)); db.commit()
+        cur=db.cursor()
+        cur.execute("DELETE FROM items WHERE id=%s",(id,))
+        db.commit()
     else:
-        db.execute("DELETE FROM items WHERE id=?",(id,)); db.commit(); db.close()
+        db.execute("DELETE FROM items WHERE id=?",(id,))
+        db.commit()
+        db.close()
     return redirect('/items')
+
 @app.route('/return/<int:id>')
 @login_required
 def return_item(id):
     if session.get('role')!='admin':
-        flash('Admin only can return!'); return redirect('/items')
+        flash('Pang admin lang mag return!')
+        return redirect('/items')
     now=get_ph_now()
     full=now.strftime("%Y-%m-%d %I:%M:%S %p")
     t=now.strftime("%I:%M:%S %p")
     db=get_db()
     if is_pg():
-        cur=db.cursor(); cur.execute("UPDATE items SET status='Returned', date_returned=%s, time_returned=%s, claimed_by=%s WHERE id=%s", (full,t,session['email'],id)); db.commit()
+        cur=db.cursor()
+        cur.execute("UPDATE items SET status='Returned', date_returned=%s, time_returned=%s, claimed_by=%s WHERE id=%s", (full,t,session['email'],id))
+        db.commit()
     else:
-        db.execute("UPDATE items SET status='Returned', date_returned=?, time_returned=?, claimed_by=? WHERE id=?", (full,t,session['email'],id)); db.commit(); db.close()
+        db.execute("UPDATE items SET status='Returned', date_returned=?, time_returned=?, claimed_by=? WHERE id=?", (full,t,session['email'],id))
+        db.commit()
+        db.close()
     return redirect('/')
+
 @app.route('/found/<int:id>')
 @login_required
 def found_item(id):
@@ -322,101 +380,137 @@ def found_item(id):
             db.commit()
         db.close()
     return redirect('/items')
+
 @app.route('/match/<int:id>')
 @login_required
 def match_item(id):
     if session.get('role') not in ['admin','staff']:
-        flash('Staff or Admin only can mark as match!'); return redirect('/matches')
+        flash('Staff o Admin lang pwede mag match!')
+        return redirect('/matches')
     db=get_db()
     if is_pg():
-        cur=db.cursor(); cur.execute("UPDATE items SET status='Matched' WHERE id=%s",(id,)); db.commit()
+        cur=db.cursor()
+        cur.execute("UPDATE items SET status='Matched' WHERE id=%s",(id,))
+        db.commit()
     else:
-        db.execute("UPDATE items SET status='Matched' WHERE id=?",(id,)); db.commit(); db.close()
+        db.execute("UPDATE items SET status='Matched' WHERE id=?",(id,))
+        db.commit()
+        db.close()
     return redirect('/matches')
+
 @app.route('/details/<int:id>')
 @login_required
 def details(id):
     db=get_db()
     if is_pg():
-        cur=db.cursor(); cur.execute("SELECT * FROM items WHERE id=%s",(id,)); item=cur.fetchone()
+        cur=db.cursor()
+        cur.execute("SELECT * FROM items WHERE id=%s",(id,))
+        item=cur.fetchone()
     else:
-        item=db.execute("SELECT * FROM items WHERE id=?",(id,)).fetchone(); db.close()
-    return render_template('item_details.html', item=item)
+        item=db.execute("SELECT * FROM items WHERE id=?",(id,)).fetchone()
+        db.close()
+    return render_template('details.html', item=item)
+
 @app.route('/matches')
 @login_required
 def matches_page():
     if session.get('role') not in ['admin','staff']:
-        flash('Staff or Admin only!')
+        flash('Staff o Admin lang!')
         return redirect('/')
-    db = get_db()
+    db=get_db()
     if is_pg():
-        cur = db.cursor()
+        cur=db.cursor()
         cur.execute("SELECT * FROM items WHERE status='Matched' ORDER BY id DESC")
-        matched = cur.fetchall()
+        matched=cur.fetchall()
     else:
-        matched = db.execute("SELECT * FROM items WHERE status='Matched' ORDER BY id DESC").fetchall()
-    db.close()
+        matched=db.execute("SELECT * FROM items WHERE status='Matched' ORDER BY id DESC").fetchall()
+        db.close()
     return render_template('matches.html', matched=matched)
+
 @app.route('/claims')
 @login_required
 def claims_page():
     db=get_db()
     if is_pg():
-        cur=db.cursor(); cur.execute("SELECT * FROM items WHERE status='Returned' ORDER BY date_returned DESC"); items=cur.fetchall()
+        cur=db.cursor()
+        cur.execute("SELECT * FROM items WHERE status='Returned' ORDER BY date_returned DESC")
+        items=cur.fetchall()
     else:
-        items=db.execute("SELECT * FROM items WHERE status='Returned' ORDER BY date_returned DESC").fetchall(); db.close()
+        items=db.execute("SELECT * FROM items WHERE status='Returned' ORDER BY date_returned DESC").fetchall()
+        db.close()
     return render_template('claims.html', items=items)
+
 @app.route('/users')
 @login_required
 @admin_required
 def users_page():
     db=get_db()
     if is_pg():
-        cur=db.cursor(); cur.execute("SELECT * FROM users"); users=cur.fetchall()
-        cur.execute("SELECT * FROM users WHERE is_approved=0"); pending=cur.fetchall()
+        cur=db.cursor()
+        cur.execute("SELECT * FROM users")
+        users=cur.fetchall()
+        cur.execute("SELECT * FROM users WHERE is_approved=0")
+        pending=cur.fetchall()
     else:
         users=db.execute("SELECT * FROM users").fetchall()
         pending=db.execute("SELECT * FROM users WHERE is_approved=0").fetchall()
-    db.close()
+        db.close()
     return render_template('users.html', users=users, pending=pending)
+
 @app.route('/approve/<int:id>')
 @login_required
 @admin_required
 def approve_user(id):
     db=get_db()
     if is_pg():
-        cur=db.cursor(); cur.execute("UPDATE users SET is_approved=1 WHERE id=%s",(id,)); db.commit()
+        cur=db.cursor()
+        cur.execute("UPDATE users SET is_approved=1 WHERE id=%s",(id,))
+        db.commit()
     else:
-        db.execute("UPDATE users SET is_approved=1 WHERE id=?",(id,)); db.commit(); db.close()
-    flash('User approved successfully!')
+        db.execute("UPDATE users SET is_approved=1 WHERE id=?",(id,))
+        db.commit()
+        db.close()
+    flash('Na-approve na user!')
     return redirect('/users')
+
 @app.route('/reject/<int:id>')
 @login_required
 @admin_required
 def reject_user(id):
     db=get_db()
     if is_pg():
-        cur=db.cursor(); cur.execute("DELETE FROM users WHERE id=%s",(id,)); db.commit()
+        cur=db.cursor()
+        cur.execute("DELETE FROM users WHERE id=%s",(id,))
+        db.commit()
     else:
-        db.execute("DELETE FROM users WHERE id=?",(id,)); db.commit(); db.close()
-    flash('User registration rejected and deleted.')
+        db.execute("DELETE FROM users WHERE id=?",(id,))
+        db.commit()
+        db.close()
+    flash('Na-reject at nabura user.')
     return redirect('/users')
+
 @app.route('/archive')
 @login_required
 @admin_required
 def archive_page():
     db=get_db()
     if is_pg():
-        cur=db.cursor(); cur.execute("SELECT * FROM items WHERE status='Returned'"); items=cur.fetchall()
+        cur=db.cursor()
+        cur.execute("SELECT * FROM items WHERE status='Returned'")
+        items=cur.fetchall()
     else:
-        items=db.execute("SELECT * FROM items WHERE status='Returned'").fetchall(); db.close()
+        items=db.execute("SELECT * FROM items WHERE status='Returned'").fetchall()
+        db.close()
     return render_template('archive.html', items=items)
+
 @app.route('/profile', methods=['GET','POST'])
 @login_required
 def profile_page():
     db=get_db()
     if is_pg():
-        cur=db.cursor(); cur.execute("SELECT * FROM users WHERE id=%s",(session['user_id'],)); user=cur.fetchone()
+        cur=db.cursor()
+        cur.execute("SELECT * FROM users WHERE id=%s",(session['user_id'],))
+        user=cur.fetchone()
     else:
         user=db.execute("SELECT * FROM users WHERE id=?",(session['user_id'],)).fetchone()
     if request.method=='POST':
@@ -432,39 +526,49 @@ def profile_page():
         if check:
             if not is_pg():
                 db.close()
-            flash('Username or email already taken by another user!')
+            flash('Gamit na username o email!')
             return render_template('profile.html', user=user)
         if pw:
             if is_pg():
-                cur.execute("UPDATE users SET name=%s, username=%s, email=%s, password=%s WHERE id=%s", (name, username, email, pw, session['user_id'])); db.commit()
+                cur.execute("UPDATE users SET name=%s, username=%s, email=%s, password=%s WHERE id=%s", (name, username, email, pw, session['user_id']))
+                db.commit()
             else:
-                db.execute("UPDATE users SET name=?, username=?, email=?, password=? WHERE id=?", (name, username, email, pw, session['user_id'])); db.commit(); db.close()
-            flash('Profile updated! Password changed. Please login again with new credentials.')
+                db.execute("UPDATE users SET name=?, username=?, email=?, password=? WHERE id=?", (name, username, email, pw, session['user_id']))
+                db.commit()
+                db.close()
+            flash('Na-update profile! Nagpalit ka password, login ka ulit.')
             session.clear()
             return redirect('/login')
         else:
             if is_pg():
-                cur.execute("UPDATE users SET name=%s, username=%s, email=%s WHERE id=%s", (name, username, email, session['user_id'])); db.commit()
+                cur.execute("UPDATE users SET name=%s, username=%s, email=%s WHERE id=%s", (name, username, email, session['user_id']))
+                db.commit()
             else:
-                db.execute("UPDATE users SET name=?, username=?, email=? WHERE id=?", (name, username, email, session['user_id'])); db.commit(); db.close()
-            session['name']=name; session['email']=email
-            flash('Profile updated successfully!')
+                db.execute("UPDATE users SET name=?, username=?, email=? WHERE id=?", (name, username, email, session['user_id']))
+                db.commit()
+                db.close()
+            session['name']=name
+            session['email']=email
+            flash('Na-update profile!')
             return redirect('/profile')
     if not is_pg():
         db.close()
     return render_template('profile.html', user=user)
+
 @app.route('/fixdb')
 def fixdb():
     try:
         init_db()
-        return "DB FIXED! Go to /login - admin@zdspgc.edu.ph / admin123"
+        return "DB AYOS NA! Punta ka /login - admin@zdspgc.edu.ph / admin123"
     except Exception as e:
         return f"Error: {e}"
+
 with app.app_context():
     try:
         init_db()
         print("ZDSPGC DB INIT SUCCESS!")
     except Exception as e:
         print(f"DB Init Error: {e}")
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
