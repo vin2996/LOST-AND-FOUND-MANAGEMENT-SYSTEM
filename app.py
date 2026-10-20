@@ -3,7 +3,6 @@ import os, sqlite3
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from functools import wraps
-
 try:
     import psycopg
     from psycopg.rows import dict_row
@@ -70,7 +69,23 @@ def init_db():
     if pg:
         cur = db.cursor()
         cur.execute('''CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email TEXT UNIQUE, password TEXT, role TEXT, name TEXT, is_approved INTEGER DEFAULT 1, username TEXT UNIQUE)''')
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_approved INTEGER DEFAULT 1")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT UNIQUE")
         cur.execute('''CREATE TABLE IF NOT EXISTS items (id SERIAL PRIMARY KEY, name TEXT, category TEXT, description TEXT, location TEXT, status TEXT, image TEXT, reported_by TEXT, date_reported TEXT, date_returned TEXT, time_returned TEXT, claimed_by TEXT)''')
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS category TEXT")
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS description TEXT")
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS location TEXT")
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS status TEXT")
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS image TEXT")
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS reported_by TEXT")
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS date_reported TEXT")
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS date_returned TEXT")
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS time_returned TEXT")
+        cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS claimed_by TEXT")
         cur.execute("SELECT COUNT(*) as c FROM users")
         row = cur.fetchone()
         count = row['c'] if isinstance(row, dict) else row[0]
@@ -94,6 +109,10 @@ def init_db():
             pass
         try:
             db.execute("ALTER TABLE users ADD COLUMN username TEXT")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN email TEXT")
         except:
             pass
         db.execute('''CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, category TEXT, description TEXT, location TEXT, status TEXT, image TEXT, reported_by TEXT, date_reported TEXT, date_returned TEXT, time_returned TEXT, claimed_by TEXT)''')
@@ -136,7 +155,7 @@ def login():
             user=cur.fetchone()
         else:
             user=db.execute("SELECT * FROM users WHERE (email=? OR username=?) AND password=?",(email,email,pw)).fetchone()
-        db.close()
+            db.close()
         if user:
             if user['is_approved']==0:
                 flash('Account pending approval by admin. Please wait for staff approval.')
@@ -170,7 +189,7 @@ def register():
             else:
                 db.execute("INSERT INTO users (username,email,password,role,name,is_approved) VALUES (?,?,?,?,?,?)", (username,email,pw,role,name,is_approved))
                 db.commit()
-            db.close()
+                db.close()
             if role=='student':
                 flash('Registration successful! Student auto-approved, you can now login.')
             else:
@@ -205,7 +224,7 @@ def dashboard():
         matched=db.execute("SELECT COUNT(*) FROM items WHERE status='Matched'").fetchone()[0]
         returned=db.execute("SELECT COUNT(*) FROM items WHERE status='Returned'").fetchone()[0]
         items=db.execute("SELECT * FROM items ORDER BY id DESC LIMIT 8").fetchall()
-    db.close()
+        db.close()
     return render_template('dashboard.html', lost=lost, found=found, matched=matched, returned=returned, items=items)
 
 @app.route('/items')
@@ -240,7 +259,7 @@ def items_page():
                 items=db.execute("SELECT * FROM items ORDER BY id DESC").fetchall()
             else:
                 items=db.execute("SELECT * FROM items WHERE status=? ORDER BY id DESC",(status,)).fetchall()
-    db.close()
+        db.close()
     return render_template('items.html', items=items, filter=status, q=q)
 
 @app.route('/report', methods=['GET','POST'])
@@ -342,8 +361,10 @@ def details(id):
 
 @app.route('/matches')
 @login_required
-@admin_required
 def matches_page():
+    if session.get('role') not in ['admin','staff']:
+        flash('Staff or Admin only!')
+        return redirect('/')
     db = get_db()
     if is_pg():
         cur = db.cursor()
@@ -351,7 +372,7 @@ def matches_page():
         matched = cur.fetchall()
     else:
         matched = db.execute("SELECT * FROM items WHERE status='Matched' ORDER BY id DESC").fetchall()
-    db.close()
+        db.close()
     return render_template('matches.html', matched=matched)
 
 @app.route('/claims')
@@ -375,7 +396,7 @@ def users_page():
     else:
         users=db.execute("SELECT * FROM users").fetchall()
         pending=db.execute("SELECT * FROM users WHERE is_approved=0").fetchall()
-    db.close()
+        db.close()
     return render_template('users.html', users=users, pending=pending)
 
 @app.route('/approve/<int:id>')
@@ -456,7 +477,6 @@ def profile_page():
         db.close()
     return render_template('profile.html', user=user)
 
-# --- ADDED FOR RENDER POSTGRES FIX ---
 @app.route('/fixdb')
 def fixdb():
     try:
@@ -465,7 +485,6 @@ def fixdb():
     except Exception as e:
         return f"Error: {e}"
 
-# AUTO CREATE TABLES ON STARTUP
 with app.app_context():
     try:
         init_db()
