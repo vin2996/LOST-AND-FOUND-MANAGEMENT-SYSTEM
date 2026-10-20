@@ -28,11 +28,7 @@ z-index: -1;
 .main {
 background: transparent;
 }
-.topbar,
-.card,
-.stat-card,
-.item-card,
-.alert {
+.topbar, .card, .stat-card, .item-card, .alert {
 background: rgba(255, 255, 255, 0.92) !important;
 backdrop-filter: blur(6px);
 -webkit-backdrop-filter: blur(6px);
@@ -118,11 +114,11 @@ align-items: flex-start
 <div class="mt-4">
 <a href="/" class="{% if request.path=='/' %}active{% endif %}">📊 Dashboard</a>
 <a href="/items" class="{% if '/items' in request.path %}active{% endif %}">📦 Items</a>
-{% if session.role in ['admin','staff'] %}
+{% if session.get('role','').lower() in ['admin','staff'] %}
 <a href="/matches" class="{% if '/matches' in request.path %}active{% endif %}">🔗 Matches</a>
 <a href="/claims" class="{% if '/claims' in request.path %}active{% endif %}">📝 Claims</a>
 {% endif %}
-{% if session.role=='admin' %}
+{% if session.get('role','').lower()=='admin' %}
 <a href="/users" class="{% if '/users' in request.path %}active{% endif %}">👥 Users</a>
 <a href="/archive" class="{% if '/archive' in request.path %}active{% endif %}">🗄️ Archive</a>
 {% endif %}
@@ -130,7 +126,7 @@ align-items: flex-start
 </div>
 </div>
 <div class="logout-box">
-<a href="/logout" style="color:#ffccbc;display:block;text-decoration:none;font-size:14px;">🚪 Logout ({{session.role}})</a>
+<a href="/logout" style="color:#ffccbc;display:block;text-decoration:none;font-size:14px;">🚪 Logout ({{session.get('role','')}})</a>
 </div>
 </div>
 <div class="main">
@@ -140,8 +136,8 @@ align-items: flex-start
 <small>ZDSPGC Dimaling Campus • Track and manage lost & found items efficiently</small>
 </div>
 <div class="d-flex align-items-center gap-3">
-<span class="badge bg-success rounded-circle p-2">{% if session.role == 'admin' %}AD{% elif session.role == 'staff' %}ST{% else %}{{ session.role[0:2].upper() }}{% endif %}</span>
-{{session.name}}
+<span class="badge bg-success rounded-circle p-2">{% if session.get('role','').lower() == 'admin' %}AD{% elif session.get('role','').lower() == 'staff' %}ST{% else %}{{ session.get('role','')[0:2].upper() }}{% endif %}</span>
+{{session.get('name','')}}
 </div>
 </div>
 {% with messages=get_flashed_messages() %}
