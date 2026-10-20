@@ -65,7 +65,6 @@ def close_connection(exception):
 def init_db():
     db = get_db()
     pg = is_pg()
-    print(f"INIT DB - is_pg: {pg}, HAS_POSTGRES: {HAS_POSTGRES}")
     if pg:
         cur = db.cursor()
         cur.execute('''CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email TEXT UNIQUE, password TEXT, role TEXT, name TEXT, is_approved INTEGER DEFAULT 1, username TEXT UNIQUE)''')
@@ -138,7 +137,7 @@ def login_required(f):
 def admin_required(f):
     @wraps(f)
     def dec(*a,**kw):
-        if session.get('role')!='admin':
+        if session.get('role','').lower()!='admin':
             flash('Admin only!')
             return redirect('/')
         return f(*a,**kw)
@@ -163,7 +162,7 @@ def login():
                 return render_template('login.html')
             session['user_id']=user['id']
             session['email']=user['email']
-            session['role']=user['role']
+            session['role']=str(user['role']).lower()
             session['name']=user['name']
             return redirect('/')
         flash('Wrong email/password')
@@ -188,10 +187,10 @@ def register():
             is_approved = 1 if role=='student' else 0
             if is_pg():
                 cur=db.cursor()
-                cur.execute("INSERT INTO users (username,email,password,role,name,is_approved) VALUES (%s,%s,%s,%s,%s,%s)", (username,email,pw,role,name,is_approved))
+                cur.execute("INSERT INTO users (username,email,password,role,name,is_approved) VALUES (%s,%s,%s,%s,%s,%s)", (username,email,pw,role.lower(),name,is_approved))
                 db.commit()
             else:
-                db.execute("INSERT INTO users (username,email,password,role,name,is_approved) VALUES (?,?,?,?,?,?)", (username,email,pw,role,name,is_approved))
+                db.execute("INSERT INTO users (username,email,password,role,name,is_approved) VALUES (?,?,?,?,?,?)", (username,email,pw,role.lower(),name,is_approved))
                 db.commit()
                 db.close()
             if role=='student':
@@ -309,7 +308,7 @@ def edit_item(id):
         item=cur.fetchone()
     else:
         item=db.execute("SELECT * FROM items WHERE id=?",(id,)).fetchone()
-    if session.get('role')!='admin' and item['reported_by']!=session.get('email'):
+    if session.get('role','').lower()!='admin' and item['reported_by']!=session.get('email'):
         if not is_pg():
             db.close()
         flash('Only the person who reported it or the admin can edit')
@@ -335,7 +334,7 @@ def edit_item(id):
 @app.route('/delete/<int:id>')
 @login_required
 def delete_item(id):
-    if session.get('role')!='admin':
+    if session.get('role','').lower()!='admin':
         flash('Admin only can delete')
         return redirect('/items')
     db=get_db()
@@ -352,7 +351,7 @@ def delete_item(id):
 @app.route('/return/<int:id>')
 @login_required
 def return_item(id):
-    if session.get('role')!='admin':
+    if session.get('role','').lower()!='admin':
         flash('Admin only can return!')
         return redirect('/items')
     now=datetime.now()
@@ -372,7 +371,7 @@ def return_item(id):
 @app.route('/match/<int:id>')
 @login_required
 def match_item(id):
-    if session.get('role') not in ['admin','staff']:
+    if session.get('role','').lower() not in ['admin','staff']:
         flash('Staff or Admin only can mark as match!')
         return redirect('/matches')
     db=get_db()
@@ -402,7 +401,7 @@ def details(id):
 @app.route('/matches')
 @login_required
 def matches_page():
-    if session.get('role') not in ['admin','staff']:
+    if session.get('role','').lower() not in ['admin','staff']:
         flash('Staff or Admin only!')
         return redirect('/')
     db = get_db()
@@ -554,12 +553,10 @@ def fixdb():
             existing = cur.fetchone()
             if not existing:
                 cur.execute("INSERT INTO users (email,password,role,name,is_approved,username) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (email) DO NOTHING", ('admin@zdspgc.edu.ph','admin123','admin','Admin',1,'admin'))
-                try:
-                    cur.execute("INSERT INTO users (email,password,role,name,is_approved,username) VALUES (%s,%s,%s,%s,%s,%s)", ('admin2@zdspgc.edu.ph','admin123','admin','Admin2',1,'admin2'))
-                except:
-                    pass
+            else:
+                cur.execute("UPDATE users SET role='admin', is_approved=1 WHERE username='admin' OR email='admin@zdspgc.edu.ph'")
             db.commit()
-            return "DB FIXED! Admin exists or created. Try login: admin / admin123 or admin@zdspgc.edu.ph / admin123"
+            return "DB FIXED! Admin ready - login: admin / admin123"
         else:
             init_db()
             return "DB FIXED LOCAL! admin / admin123"
@@ -569,7 +566,6 @@ def fixdb():
 with app.app_context():
     try:
         init_db()
-        print("ZDSPGC DB INIT SUCCESS!")
     except Exception as e:
         print(f"DB Init Error: {e}")
 
